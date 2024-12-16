@@ -5,10 +5,6 @@ pipeline {
             image 'docker:20.10.7'
             args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
-        options {
-            timeout(time: 1, unit: 'HOURS')
-            ansiColor('xterm')
-        }
     } 
     environment {
         image = 'test'
