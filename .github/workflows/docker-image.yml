@@ -17,6 +17,9 @@ jobs:
         id: vars
         run: echo "IMAGE_VERSION=v1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
+      - name: List
+        run: ls -ltr
+
       - name: Build Docker image
         run: docker build -t poswark/python-test:${{ env.IMAGE_VERSION }} .
         
