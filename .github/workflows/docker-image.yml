@@ -14,5 +14,22 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Set Docker image version
+      id: vars
+      run: echo "IMAGE_VERSION=v1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+        
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      run: docker build . --file Dockerfile --tag poswark/python-test:${{ env.IMAGE_VERSION }}
+
+    - name: Run KICS security scan
+      run: |
+        docker pull checkmarx/kics:latest
+        mkdir -p ./results
+        docker run --rm -v $PWD:/path checkmarx/kics:latest scan -p /path -o /path/results --report-formats json,html
+
+    - name: Upload KICS results as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: kics-report
+        path: ./results/
