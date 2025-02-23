@@ -10,8 +10,8 @@ COPY ./app /code/app
 
 
 
-RUN addgroup -S appuser && adduser -S appuser -G appuser
-USER appuser
+#RUN addgroup -S appuser && adduser -S appuser -G appuser
+#USER appuser
 
 
 EXPOSE 5050
