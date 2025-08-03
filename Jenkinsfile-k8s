@@ -9,68 +9,83 @@ metadata:
     sidecar.istio.io/inject: "false"
 spec:
   containers:
-  - name: docker-env
-    image: docker:24.0.2-cli
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
     command:
     - cat
     tty: true
     volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker
     - name: workspace-volume
-      mountPath: /home/jenkins/agent
-  - name: jnlp
-    image: jenkins/inbound-agent:latest
-    env:
-    - name: JENKINS_WEB_SOCKET
-      value: "true"
+      mountPath: /workspace
+  - name: tools
+    image: alpine:3.19
+    command:
+    - cat
+    tty: true
     volumeMounts:
     - name: workspace-volume
-      mountPath: /home/jenkins/agent
+      mountPath: /workspace
   volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+  - name: kaniko-secret
+    secret:
+      secretName: docker-config  # ← Aquí montas tu Docker config.json con credenciales
   - name: workspace-volume
     emptyDir: {}
 """
-            defaultContainer 'docker-env'
+            defaultContainer 'kaniko'
         }
     }
 
     environment {
-        image = 'test'
-        tag = 'latest'
+        IMAGE_NAME = "poswark/test"
+        TAG = "latest"
     }
 
     stages {
-        stage('Build') {
+        stage('Build with Kaniko') {
             steps {
-                sh "docker build --no-cache -t ${image}:${tag} ."
+                container('kaniko') {
+                    sh '''
+                    /kaniko/executor \
+                      --context=/workspace \
+                      --dockerfile=/workspace/Dockerfile \
+                      --destination=${IMAGE_NAME}:${TAG} \
+                      --skip-tls-verify \
+                      --insecure
+                    '''
+                }
             }
         }
-        stage('Scan image') {
+
+        stage('Scan with Trivy') {
             steps {
-                sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --insecure ${image}:${tag}"
+                container('tools') {
+                    sh '''
+                    apk add --no-cache curl
+                    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                    trivy image --insecure ${IMAGE_NAME}:${TAG}
+                    '''
+                }
             }
         }
-        stage('Run KICS Scan') {
+
+        stage('Scan with KICS') {
             steps {
-                sh '''
-                docker run -t -v $(pwd):/path checkmarx/kics:latest scan \
-                    -p /path -o ./results --report-formats "json,html"
-                '''
+                container('tools') {
+                    sh '''
+                    apk add --no-cache curl docker
+                    curl -sSL https://github.com/Checkmarx/kics/releases/latest/download/kics-linux.tar.gz | tar -xz -C /usr/local/bin
+                    kics scan -p /workspace -o /workspace/results --report-formats "json,html"
+                    '''
+                }
             }
         }
+
         stage('Publish Results') {
             steps {
                 archiveArtifacts artifacts: 'results/*', fingerprint: true
-            }
-        }
-        stage('Push Image') {
-            steps {
-                sh "docker tag ${image}:${tag} poswark/${image}:${tag}"
-                sh "docker push poswark/${image}:${tag}"
             }
         }
     }
