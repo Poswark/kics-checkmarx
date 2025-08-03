@@ -1,0 +1,77 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  containers:
+  - name: docker-env
+    image: docker:24.0.2-cli
+    command:
+    - cat
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    env:
+    - name: JENKINS_WEB_SOCKET
+      value: "true"
+    volumeMounts:
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+  - name: workspace-volume
+    emptyDir: {}
+"""
+            defaultContainer 'docker-env'
+        }
+    }
+
+    environment {
+        image = 'test'
+        tag = 'latest'
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                sh "docker build --no-cache -t ${image}:${tag} ."
+            }
+        }
+        stage('Scan image') {
+            steps {
+                sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --insecure ${image}:${tag}"
+            }
+        }
+        stage('Run KICS Scan') {
+            steps {
+                sh '''
+                docker run -t -v $(pwd):/path checkmarx/kics:latest scan \
+                    -p /path -o ./results --report-formats "json,html"
+                '''
+            }
+        }
+        stage('Publish Results') {
+            steps {
+                archiveArtifacts artifacts: 'results/*', fingerprint: true
+            }
+        }
+        stage('Push Image') {
+            steps {
+                sh "docker tag ${image}:${tag} poswark/${image}:${tag}"
+                sh "docker push poswark/${image}:${tag}"
+            }
+        }
+    }
+}
