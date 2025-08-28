@@ -54,7 +54,7 @@ spec:
             steps {
                 container('trivy') {
                     sh """
-                        trivy image --insecure poswark/${params.IMAGE_NAME}:${params.TAG}
+                        trivy image --insecure poswark/kaniko-demo:1.0.13
                     """
                 }
             }
@@ -68,17 +68,14 @@ spec:
             }
             steps {
                 container('gitleaks') {
-                    sh """
-                       mkdir -p results
-                       git clone ${REPO_URL} --branch ${BRANCH} repo
-                       cd repo
+                    sh '''
                        gitleaks detect \
                           --source . \
-                          --report-path ../results/gitleaks-report.json \
+                          --report-path gitleaks-report.json \
                           --report-format json \
                           --verbose || true
                         
-                    """
+                   '''
                 }
             }
         }
