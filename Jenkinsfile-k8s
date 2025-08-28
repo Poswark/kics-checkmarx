@@ -46,19 +46,38 @@ spec:
 
         stage('Scan with Trivy') {
             steps {
-                container('tools') {
+                container('trivy') {
                     sh '''
-                    apk add --no-cache curl
-                    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
                     trivy image --insecure ${IMAGE_NAME}:${TAG}
                     '''
                 }
             }
         }
-
+        stage('Scan with Gitleaks') {
+            agent {
+                kubernetes {
+                    yaml gitleaksTemplate()
+                }
+            }
+            steps {
+                container('gitleaks') {
+                    sh """
+                       mkdir -p results
+                       git clone ${REPO_URL} --branch ${BRANCH} repo
+                       cd repo
+                       gitleaks detect \
+                          --source . \
+                          --report-path ../results/gitleaks-report.json \
+                          --report-format json \
+                          --verbose || true
+                        
+                    """
+                }
+            }
+        }
         stage('Scan with KICS') {
             steps {
-                container('tools') {
+                container('kicks') {
                     sh '''
                     apk add --no-cache curl docker
                     curl -sSL https://github.com/Checkmarx/kics/releases/latest/download/kics-linux.tar.gz | tar -xz -C /usr/local/bin
