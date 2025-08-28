@@ -1,3 +1,4 @@
+@Library('shared-library') _
 pipeline {
   agent {
     kubernetes {
@@ -45,14 +46,20 @@ spec:
     }
 
         stage('Scan with Trivy') {
+            agent {
+                kubernetes {
+                    yaml trivyTemplate()
+                }
+            }
             steps {
                 container('trivy') {
-                    sh '''
-                    trivy image --insecure ${IMAGE_NAME}:${TAG}
-                    '''
+                    sh """
+                        trivy image --insecure poswark/${params.IMAGE_NAME}:${params.TAG}
+                    """
                 }
             }
         }
+
         stage('Scan with Gitleaks') {
             agent {
                 kubernetes {
